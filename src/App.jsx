@@ -6,6 +6,7 @@ import Filters from './components/Filters';
 import NewsGrid from './components/NewsGrid';
 import ArticleModal from './components/ArticleModal';
 import Footer from './components/Footer';
+import { Agentation } from 'agentation';
 
 // Available categories supported by GNews API
 const CATEGORIES = [
@@ -28,6 +29,15 @@ function App() {
 
   const [category, setCategory] = useState('general');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  // Set default to current UTC date in YYYY-MM-DD format
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date();
+    const year = today.getUTCFullYear();
+    const month = String(today.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(today.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
   const [articles, setArticles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -40,10 +50,18 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Fetch articles on category change
+  // Debounce search query to avoid spamming the GNews API on every keystroke
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // Fetch articles on category, date, or search query change
   useEffect(() => {
     fetchNews();
-  }, [category]);
+  }, [category, selectedDate, debouncedSearchQuery]);
 
   const fetchNews = async () => {
     setIsLoading(true);
@@ -52,7 +70,15 @@ function App() {
     try {
       // Fetch news from GNews API
       const apiKey = 'a18ba5bd7392d64601972611a88c8beb';
-      const url = `https://gnews.io/api/v4/top-headlines?category=${category}&apikey=${apiKey}`;
+      
+      // Format the selected date to match GNews API expectations (ISO 8601 strings)
+      const fromDate = `${selectedDate}T00:00:00Z`;
+      const toDate = `${selectedDate}T23:59:59Z`;
+      
+      let url = `https://gnews.io/api/v4/top-headlines?category=${category}&from=${fromDate}&to=${toDate}&apikey=${apiKey}`;
+      if (debouncedSearchQuery) {
+        url += `&q=${encodeURIComponent(debouncedSearchQuery)}`;
+      }
       
       const response = await fetch(url);
       if (!response.ok) {
@@ -87,11 +113,11 @@ function App() {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
   };
 
-  // Format Date to local readable string
+  // Format Date to UTC readable string
   const formatDate = (dateString) => {
     try {
-      const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-      return new Date(dateString).toLocaleDateString(undefined, options);
+      const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' };
+      return new Date(dateString).toLocaleDateString(undefined, options) + ' UTC';
     } catch (e) {
       return dateString;
     }
@@ -109,6 +135,11 @@ function App() {
   const resetFilters = () => {
     setSearchQuery('');
     setCategory('general');
+    const today = new Date();
+    const year = today.getUTCFullYear();
+    const month = String(today.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(today.getUTCDate()).padStart(2, '0');
+    setSelectedDate(`${year}-${month}-${day}`);
   };
 
   return (
@@ -135,6 +166,8 @@ function App() {
           setCategory={setCategory}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
         />
 
         {/* Loading Spinner or Grid Content */}
@@ -164,6 +197,9 @@ function App() {
 
       {/* Footer Component */}
       <Footer articlesCount={filteredArticles.length} />
+
+      {/* Agentation UI Tool for visual feedback and sync */}
+      <Agentation />
 
     </div>
   );
